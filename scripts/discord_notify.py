@@ -106,6 +106,24 @@ def send_daily_report(stats: dict) -> None:
     _post({"embeds": [embed]})
 
 # ─────────────────────────────────────────────
+# POOL WARNING
+# ─────────────────────────────────────────────
+def send_pool_warning(platform: str) -> None:
+    embed = {
+        "title": f"⚠️  Account Pool Empty — {platform.upper()}",
+        "description": (
+            f"All `{platform}` throwaway accounts are either **holding a username** or **banned**.\n"
+            "Add more accounts to keep auto-claiming."
+        ),
+        "color": COLOR_ORANGE,
+        "footer": {"text": "Babe Sniper • account pool manager"},
+    }
+    _post({
+        "content": f"<@{USER_ID}> ⚠️ **Pool is full — add more accounts!**",
+        "embeds": [embed],
+    })
+
+# ─────────────────────────────────────────────
 # TEST PING
 # ─────────────────────────────────────────────
 def send_test_ping() -> None:

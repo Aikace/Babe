@@ -63,7 +63,60 @@ def add_to_claimed(username: str, platform: str, value_score: int,
     }).execute()
     mark_claimed(username, platform)
 
+
+# ── Account Pool ──────────────────────────────────────────────────────────────
+
+def get_available_account(platform: str) -> dict | None:
+    """Return the first available account for a platform, or None."""
+    client = get_client()
+    result = (client.table("accounts")
+              .select("*")
+              .eq("platform", platform)
+              .eq("status", "available")
+              .limit(1)
+              .execute())
+    return result.data[0] if result.data else None
+
+def mark_account_holding(account_id: str, claimed_username: str) -> None:
+    client = get_client()
+    client.table("accounts").update({
+        "status": "holding",
+        "holding_username": claimed_username
+    }).eq("id", account_id).execute()
+
+def mark_account_available(account_id: str) -> None:
+    client = get_client()
+    client.table("accounts").update({
+        "status": "available",
+        "holding_username": None
+    }).eq("id", account_id).execute()
+
+def mark_account_banned(account_id: str) -> None:
+    client = get_client()
+    client.table("accounts").update({
+        "status": "banned"
+    }).eq("id", account_id).execute()
+
+def add_account(platform: str, username: str, password: str) -> bool:
+    client = get_client()
+    try:
+        client.table("accounts").upsert({
+            "platform": platform,
+            "username": username,
+            "password": password,
+            "status":   "available"
+        }, on_conflict="username").execute()
+        return True
+    except Exception as e:
+        print(f"  [db] Error adding account {username}: {e}")
+        return False
+
+def get_account_pool_status() -> list:
+    client = get_client()
+    return client.table("accounts").select("*").order("platform").execute().data
+
 def get_stats() -> dict:
+
     client = get_client()
     total_monitored = len(client.table("watchlist").select("id").eq("status", "monitoring").execute().data)
     total_available = len(client.table("watchlist").select("id").eq("status", "available").execute().data)

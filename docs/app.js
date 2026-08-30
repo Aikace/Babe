@@ -11,6 +11,7 @@ const HEADERS = {
 let allWatchlist = [];
 let allAvailable = [];
 let allClaimed   = [];
+let allPool      = [];
 let activeTab    = "watchlist";
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
@@ -22,15 +23,17 @@ async function fetchTable(table, params = "") {
 
 async function loadData() {
   try {
-    const [watchlist, available, claimed] = await Promise.all([
+    const [watchlist, available, claimed, pool] = await Promise.all([
       fetchTable("watchlist", "status=eq.monitoring&order=value_score.desc&limit=500"),
       fetchTable("watchlist", "status=eq.available&order=value_score.desc"),
       fetchTable("claimed",   "order=claimed_at.desc&limit=200"),
+      fetchTable("accounts",  "order=platform.asc,status.asc"),
     ]);
 
     allWatchlist = watchlist;
     allAvailable = available;
     allClaimed   = claimed;
+    allPool      = pool;
 
     updateStats(watchlist, available, claimed);
     renderCurrentTab();
@@ -169,10 +172,24 @@ function renderClaimed() {
     : `<tr><td colspan="6" class="loading">Nothing claimed yet — the sniper is warming up 🎯</td></tr>`;
 }
 
+function renderPool() {
+  const statusIcon = { available: "🟢", holding: "🟡", banned: "🔴" };
+  document.getElementById("poolBody").innerHTML = allPool.length
+    ? allPool.map(r => `
+        <tr>
+          <td class="handle">@${r.username}</td>
+          <td>${platformBadge(r.platform)}</td>
+          <td>${statusIcon[r.status] || "❓"} <strong>${r.status}</strong></td>
+          <td class="value-est">${r.holding_username ? `@${r.holding_username}` : "—"}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="4" class="loading">No accounts in pool yet</td></tr>`;
+}
+
 function renderCurrentTab() {
   if      (activeTab === "watchlist") renderWatchlist();
   else if (activeTab === "available") renderAvailable();
   else if (activeTab === "claimed")   renderClaimed();
+  else if (activeTab === "pool")      renderPool();
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────

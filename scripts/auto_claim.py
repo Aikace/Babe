@@ -2,79 +2,98 @@
 auto_claim.py
 ─────────────
 Attempts to claim an available username on Instagram or X.
-Falls back to Discord notification if auto-claim is not possible.
+Uses the Supabase account pool — rotates through all available
+throwaway accounts automatically. No hardcoded credentials.
 """
 
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from db             import add_to_claimed
-from discord_notify import send_claimed_alert
+from db import (
+    add_to_claimed,
+    get_available_account,
+    mark_account_holding,
+    mark_account_banned,
+)
+from discord_notify import send_claimed_alert, send_pool_warning
 
-IG_USERNAME    = os.environ.get("IG_USERNAME", "")
-IG_PASSWORD    = os.environ.get("IG_PASSWORD", "")
-X_USERNAME     = os.environ.get("X_USERNAME", "")
-X_API_KEY      = os.environ.get("X_API_KEY", "")
-X_API_SECRET   = os.environ.get("X_API_SECRET", "")
-X_ACCESS_TOKEN = os.environ.get("X_ACCESS_TOKEN", "")
-X_ACCESS_SECRET= os.environ.get("X_ACCESS_SECRET", "")
+X_API_KEY       = os.environ.get("X_API_KEY", "")
+X_API_SECRET    = os.environ.get("X_API_SECRET", "")
+X_ACCESS_TOKEN  = os.environ.get("X_ACCESS_TOKEN", "")
+X_ACCESS_SECRET = os.environ.get("X_ACCESS_SECRET", "")
 
 # ── Instagram ─────────────────────────────────────────────────────────────────
 
-def _claim_instagram(username: str) -> bool:
-    if not IG_USERNAME or not IG_PASSWORD:
-        print("  [ig-claim] Credentials not configured — skipping auto-claim")
-        return False
+def _claim_instagram(target_username: str) -> tuple[bool, str]:
+    """
+    Finds an available Instagram account from the pool and
+    changes its username to target_username.
+    Returns (success, account_used).
+    """
+    account = get_available_account("instagram")
+    if not account:
+        print("  [ig-claim] No available Instagram accounts in pool!")
+        send_pool_warning("instagram")
+        return False, ""
+
+    login_user = account["username"]
+    login_pass = account["password"]
+    acct_id    = account["id"]
+
     try:
         from instagrapi import Client
         cl = Client()
-        cl.delay_range = [2, 5]                     # Human-like delays
-        cl.login(IG_USERNAME, IG_PASSWORD)
-        cl.account_change_username(username)
-        print(f"  [ig-claim] ✅ Claimed @{username} on Instagram!")
-        return True
+        cl.delay_range = [2, 5]
+        print(f"  [ig-claim] Logging in as @{login_user} ...")
+        cl.login(login_user, login_pass)
+        cl.account_change_username(target_username)
+        print(f"  [ig-claim] SUCCESS: @{login_user} is now @{target_username}")
+        mark_account_holding(acct_id, target_username)
+        return True, login_user
     except ImportError:
         print("  [ig-claim] instagrapi not installed")
-        return False
+        return False, ""
     except Exception as e:
-        print(f"  [ig-claim] ❌ Failed: {e}")
-        return False
+        err = str(e).lower()
+        if "banned" in err or "challenge" in err or "disabled" in err:
+            print(f"  [ig-claim] Account @{login_user} appears banned/challenged")
+            mark_account_banned(acct_id)
+            # Retry with next available account recursively
+            return _claim_instagram(target_username)
+        print(f"  [ig-claim] Failed for @{login_user}: {e}")
+        return False, ""
 
 # ── X (Twitter) ───────────────────────────────────────────────────────────────
 
-def _claim_x(username: str) -> bool:
+def _claim_x(target_username: str) -> tuple[bool, str]:
     """
-    X's v2 API does not expose an account username-change endpoint.
-    We notify the user to claim manually via the app/website.
-    When you have Elevated access, the v1.1 account/settings endpoint
-    supports username changes — add that here once available.
+    X v2 API does not expose username-change endpoint.
+    Notifies user to claim manually.
+    Returns (success, account_used).
     """
     if not X_API_KEY:
-        print("  [x-claim] Credentials not configured — skipping auto-claim")
-        return False
-    print(f"  [x-claim] ⚠️ X does not support auto-claim via API. Notify user.")
-    return False
+        print("  [x-claim] X credentials not configured")
+        return False, ""
+    print(f"  [x-claim] X API does not support auto username change. Notify user.")
+    return False, ""
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
 def claim_username(username: str, platform: str,
                    value_score: int, value_estimate: str) -> bool:
-    success = False
+    success      = False
+    account_used = ""
 
     if platform == "instagram":
-        success = _claim_instagram(username)
-        account_used = IG_USERNAME
+        success, account_used = _claim_instagram(username)
     elif platform == "x":
-        success = _claim_x(username)
-        account_used = X_USERNAME
+        success, account_used = _claim_x(username)
     elif platform == "both":
-        ig_ok = _claim_instagram(username)
-        x_ok  = _claim_x(username)
-        success = ig_ok or x_ok
-        account_used = IG_USERNAME if ig_ok else X_USERNAME
-    else:
-        account_used = ""
+        ig_ok, ig_acct = _claim_instagram(username)
+        x_ok,  x_acct  = _claim_x(username)
+        success      = ig_ok or x_ok
+        account_used = ig_acct or x_acct
 
     if success:
         add_to_claimed(username, platform, value_score, value_estimate, account_used)
@@ -84,7 +103,8 @@ def claim_username(username: str, platform: str,
 
 if __name__ == "__main__":
     if len(sys.argv) >= 3:
-        u, p = sys.argv[1], sys.argv[2]
-        vs   = int(sys.argv[3]) if len(sys.argv) > 3 else 50
-        ve   = sys.argv[4]      if len(sys.argv) > 4 else "Unknown"
+        u  = sys.argv[1]
+        p  = sys.argv[2]
+        vs = int(sys.argv[3]) if len(sys.argv) > 3 else 50
+        ve = sys.argv[4]      if len(sys.argv) > 4 else "Unknown"
         claim_username(u, p, vs, ve)
