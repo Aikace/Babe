@@ -1,0 +1,38 @@
+name: 📊 Daily Report
+
+on:
+  schedule:
+    - cron: "0 8 * * *"       # Every day at 8 AM UTC
+  workflow_dispatch:
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send daily Discord report
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DISCORD_WEBHOOK:      ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_USER_ID:      ${{ secrets.DISCORD_USER_ID }}
+        run: |
+          python - <<'EOF'
+          import sys
+          sys.path.insert(0, "scripts")
+          from db import get_stats
+          from discord_notify import send_daily_report
+          stats = get_stats()
+          send_daily_report(stats)
+          print("Daily report sent!")
+          EOF
