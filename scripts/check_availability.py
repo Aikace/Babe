@@ -181,20 +181,22 @@ def check_x(username: str) -> bool | None:
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
 def _check_and_handle(entry: dict) -> bool:
-    """Check one watchlist entry. Returns True if username is available."""
+    """
+    Check one watchlist entry. Returns True if username is available.
+    Features:
+    - Cross-platform cascade: if name drops on IG, immediately check X too
+    - Independent platform tracking: claiming on IG doesn't stop X checking
+    """
     username = entry["username"]
     platform = entry["platform"]
     value_score    = entry["value_score"]
     value_estimate = entry["value_estimate"]
     priority       = entry["priority"]
 
-    if platform == "both":
-        # Check each platform independently
-        ig_available = check_instagram(username)
-        time.sleep(random.uniform(0.5, 1.0))
-        x_available  = check_x(username)
+    found = False
 
-        found = False
+    if platform in ("instagram", "both"):
+        ig_available = check_instagram(username)
         if ig_available is True:
             mark_available(username, "instagram")
             _try_claim_and_notify(username, "instagram", value_score, value_estimate, priority)
@@ -202,6 +204,9 @@ def _check_and_handle(entry: dict) -> bool:
         elif ig_available is False:
             mark_checked(username, "instagram")
 
+    if platform in ("x", "both"):
+        time.sleep(random.uniform(0.3, 0.8))
+        x_available = check_x(username)
         if x_available is True:
             mark_available(username, "x")
             _try_claim_and_notify(username, "x", value_score, value_estimate, priority)
@@ -209,23 +214,24 @@ def _check_and_handle(entry: dict) -> bool:
         elif x_available is False:
             mark_checked(username, "x")
 
-        return found
-    else:
-        if platform == "instagram":
-            available = check_instagram(username)
-        elif platform == "x":
-            available = check_x(username)
-        else:
-            available = None
+    # ── Cross-platform cascade ──
+    # If name just dropped on one platform, immediately check the other
+    if found and platform != "both":
+        other = "x" if platform == "instagram" else "instagram"
+        # Only cascade for 4+ char names (X requires 4+ chars)
+        if len(username) >= 4 or other == "instagram":
+            print(f"  [cascade] @{username} dropped on {platform} -> checking {other}")
+            time.sleep(random.uniform(0.5, 1.0))
+            if other == "instagram":
+                cascade_result = check_instagram(username)
+            else:
+                cascade_result = check_x(username)
 
-        if available is True:
-            mark_available(username, platform)
-            _try_claim_and_notify(username, platform, value_score, value_estimate, priority)
-            return True
-        elif available is False:
-            mark_checked(username, platform)
+            if cascade_result is True:
+                mark_available(username, other)
+                _try_claim_and_notify(username, other, value_score, value_estimate, priority)
 
-        return False
+    return found
 
 
 def _try_claim_and_notify(username: str, platform: str,

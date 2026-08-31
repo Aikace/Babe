@@ -97,23 +97,40 @@ def send_claimed_alert(username: str, platform: str, value_score: int,
     })
 
 # ─────────────────────────────────────────────
-# DAILY REPORT
+# DAILY REPORT (enhanced)
 # ─────────────────────────────────────────────
-def send_daily_report(stats: dict) -> None:
+def send_daily_report(stats: dict, pool: dict = None, rotation: dict = None) -> None:
     top = stats.get("top_names", [])
     top_str = "\n".join(
         [f"`@{n['username']}` — {_value_badge(n['value_score'])} **{n['value_score']}/100**" for n in top]
     ) or "_No names yet_"
 
+    fields = [
+        {"name": "👀 Monitoring",    "value": str(stats["total_monitored"]), "inline": True},
+        {"name": "🟢 Available",     "value": str(stats["total_available"]), "inline": True},
+        {"name": "✅ Claimed",       "value": str(stats["total_claimed"]),   "inline": True},
+        {"name": "🌟 Top Watchlist", "value": top_str,                       "inline": False},
+    ]
+
+    # Pool health
+    if pool:
+        ig_str = f"{pool.get('ig_free', 0)}/{pool.get('ig_total', 0)} free"
+        x_str  = f"{pool.get('x_free', 0)}/{pool.get('x_total', 0)} free"
+        pool_status = f"📸 IG: **{ig_str}** | 🐦 X: **{x_str}**"
+        fields.append({"name": "🔑 Account Pool", "value": pool_status, "inline": False})
+
+    # Priority rotation
+    if rotation and rotation.get("demoted", 0) > 0:
+        fields.append({
+            "name": "🔄 Auto-Rotation",
+            "value": f"Demoted **{rotation['demoted']}** stale names to LOW priority",
+            "inline": False,
+        })
+
     embed = {
         "title": "📊  Daily Sniper Report",
         "color": COLOR_GOLD,
-        "fields": [
-            {"name": "👀 Monitoring",    "value": str(stats["total_monitored"]), "inline": True},
-            {"name": "🟢 Available",     "value": str(stats["total_available"]), "inline": True},
-            {"name": "✅ Claimed",       "value": str(stats["total_claimed"]),   "inline": True},
-            {"name": "🌟 Top Watchlist", "value": top_str,                       "inline": False},
-        ],
+        "fields": fields,
         "footer": {"text": f"Babe Sniper • {_now()}"},
     }
     _post({"embeds": [embed]})
@@ -135,6 +152,18 @@ def send_pool_warning(platform: str) -> None:
         "content": f"<@{USER_ID}> ⚠️ **Pool is full — add more accounts!**",
         "embeds": [embed],
     })
+
+# ─────────────────────────────────────────────
+# RATE LIMIT WARNING
+# ─────────────────────────────────────────────
+def send_rate_limit_warning(platform: str, duration_sec: int = 60) -> None:
+    embed = {
+        "title": f"🛑  Rate Limited — {platform.upper()}",
+        "description": f"Bot is backing off for **{duration_sec}s** to avoid ban.",
+        "color": COLOR_RED,
+        "footer": {"text": "Babe Sniper • rate limiter"},
+    }
+    _post({"embeds": [embed]})
 
 # ─────────────────────────────────────────────
 # TEST PING

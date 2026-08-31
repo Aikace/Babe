@@ -6,7 +6,7 @@ Manages watchlist, claimed, and accounts tables.
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from supabase import create_client, Client
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -169,3 +169,51 @@ def get_stats() -> dict:
         "total_claimed":   total_claimed,
         "top_names":       top_names,
     }
+
+# ── Auto Priority Rotation ───────────────────────────────────────────────────
+
+def auto_rotate_priorities() -> dict:
+    """
+    Demote names monitored 30+ days without becoming available -> LOW priority.
+    This saves checking budget on stale names.
+    Returns {"demoted": count}.
+    """
+    client = get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+    # Find HIGH/MEDIUM names created before cutoff that are still monitoring
+    stale_high = (client.table("watchlist")
+                  .select("id,username,priority")
+                  .eq("status", "monitoring")
+                  .in_("priority", ["HIGH", "MEDIUM"])
+                  .lt("created_at", cutoff)
+                  .execute().data)
+
+    demoted = 0
+    for entry in stale_high:
+        # Only demote if never been available (still monitoring after 30 days)
+        client.table("watchlist").update({
+            "priority": "LOW"
+        }).eq("id", entry["id"]).execute()
+        demoted += 1
+
+    if demoted:
+        print(f"  [rotate] Demoted {demoted} stale names to LOW priority")
+    return {"demoted": demoted}
+
+# ── Pool Summary ──────────────────────────────────────────────────────────────
+
+def get_pool_summary() -> dict:
+    """Get account pool summary for Discord digest."""
+    client = get_client()
+    try:
+        accounts = client.table("accounts").select("platform,status").execute().data
+    except Exception:
+        return {"ig_total": 0, "ig_free": 0, "x_total": 0, "x_free": 0}
+
+    ig_total = sum(1 for a in accounts if a["platform"] == "instagram")
+    ig_free  = sum(1 for a in accounts if a["platform"] == "instagram" and a["status"] == "available")
+    x_total  = sum(1 for a in accounts if a["platform"] == "x")
+    x_free   = sum(1 for a in accounts if a["platform"] == "x" and a["status"] == "available")
+    return {"ig_total": ig_total, "ig_free": ig_free, "x_total": x_total, "x_free": x_free}
+

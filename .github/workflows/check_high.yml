@@ -1,8 +1,9 @@
-name: ⚡ Check HIGH Priority (Every 5 min)
+name: ⚡ Check HIGH Priority (Peak Hours)
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/15 10-16 * * *"   # Every 15 min during peak (2-8 AM PST / 10-16 UTC)
+    - cron: "0,30 0-9,17-23 * * *"  # Every 30 min outside peak
   workflow_dispatch:
 
 concurrency:

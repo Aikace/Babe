@@ -34,9 +34,20 @@ jobs:
           python - <<'EOF'
           import sys
           sys.path.insert(0, "scripts")
-          from db import get_stats
+          from db import get_stats, get_pool_summary, auto_rotate_priorities
           from discord_notify import send_daily_report
+
+          # Run auto priority rotation (demote stale names)
+          rotation = auto_rotate_priorities()
+          print(f"Priority rotation: {rotation}")
+
+          # Get stats and pool health
           stats = get_stats()
-          send_daily_report(stats)
+          pool  = get_pool_summary()
+          print(f"Stats: {stats}")
+          print(f"Pool: {pool}")
+
+          # Send enhanced daily report
+          send_daily_report(stats, pool=pool, rotation=rotation)
           print("Daily report sent!")
           EOF

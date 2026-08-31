@@ -107,6 +107,13 @@ header {
   letter-spacing: .5px;
 }
 
+.pool-health {
+  text-align: center;
+  padding: 8px 0;
+  color: #aaa;
+  font-size: 0.85rem;
+}
+
 /* ─── Tabs ──────────────────────────────────────────────────── */
 .tabs {
   display:     flex;
@@ -168,6 +175,20 @@ header {
 
 /* ─── Tables ────────────────────────────────────────────────── */
 main { padding: 0 32px 32px; }
+
+.score-dist {
+  display: flex;
+  gap: 16px;
+  padding: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.score-dist span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
 .table-wrap {
   overflow-x:    auto;

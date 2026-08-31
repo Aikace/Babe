@@ -36,6 +36,13 @@ async function loadData() {
     allPool      = pool;
 
     updateStats(watchlist, available, claimed);
+    
+    const igTotal = pool.filter(a => a.platform === 'instagram').length;
+    const igFree = pool.filter(a => a.platform === 'instagram' && a.status === 'available').length;
+    const xTotal = pool.filter(a => a.platform === 'x').length;
+    const xFree = pool.filter(a => a.platform === 'x' && a.status === 'available').length;
+    document.getElementById("poolHealth").textContent = `🔑 Pool: ${igFree}/${igTotal} IG free • ${xFree}/${xTotal} X free`;
+
     renderCurrentTab();
     document.getElementById("lastRefresh").textContent =
       "Updated " + new Date().toLocaleTimeString();
@@ -45,10 +52,15 @@ async function loadData() {
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
-function estimateMin(est) {
-  // Extract the lower bound dollar number from strings like "$200 – $1,000"
-  const m = est.match(/\$[\d,]+/);
-  return m ? parseInt(m[0].replace(/[\$,]/g, "")) : 0;
+function calcPortfolioValue(claimed) {
+  let total = 0;
+  for (const c of claimed) {
+    const est = c.value_estimate || '';
+    // Parse ranges like '$1,000-$5,000' — take the lower bound
+    const match = est.match(/\$(\d[\d,]*)/); 
+    if (match) total += parseInt(match[1].replace(/,/g, ''));
+  }
+  return total;
 }
 
 function updateStats(watchlist, available, claimed) {
@@ -56,9 +68,9 @@ function updateStats(watchlist, available, claimed) {
   document.getElementById("statAvailable").textContent  = available.length.toLocaleString();
   document.getElementById("statClaimed").textContent    = claimed.length.toLocaleString();
 
-  const portfolio = claimed.reduce((sum, r) => sum + estimateMin(r.value_estimate || ""), 0);
+  const portfolio = calcPortfolioValue(claimed);
   document.getElementById("statPortfolio").textContent =
-    portfolio > 0 ? `$${portfolio.toLocaleString()}+` : "—";
+    portfolio > 0 ? `$${portfolio.toLocaleString()}` : "—";
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -129,6 +141,26 @@ function applyFilters(rows) {
 // ── Tab renderers ─────────────────────────────────────────────────────────────
 function renderWatchlist() {
   const rows = applyFilters(allWatchlist);
+
+  let s90 = 0, s80 = 0, s65 = 0, s50 = 0;
+  rows.forEach(r => {
+    const s = r.value_score || 0;
+    if (s >= 90) s90++;
+    else if (s >= 80) s80++;
+    else if (s >= 65) s65++;
+    else if (s >= 50) s50++;
+  });
+
+  const distEl = document.getElementById("scoreDistribution");
+  if (distEl) {
+    distEl.innerHTML = `
+      <span>💎 90+: ${s90}</span>
+      <span>🔥 80-89: ${s80}</span>
+      <span>⭐ 65-79: ${s65}</span>
+      <span>📌 50-64: ${s50}</span>
+    `;
+  }
+
   document.getElementById("watchlistBody").innerHTML = rows.length
     ? rows.map(r => `
         <tr>
