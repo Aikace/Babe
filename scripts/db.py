@@ -1,11 +1,32 @@
+"""
+db.py
+─────
+Supabase database abstraction layer.
+Manages watchlist, claimed, and accounts tables.
+"""
+
 import os
+from datetime import datetime, timezone
 from supabase import create_client, Client
 
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+
+_client: Client | None = None
 
 def get_client() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    global _client
+    if _client is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+        _client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _client
+
+def _now() -> str:
+    """Return current UTC timestamp as ISO-8601 string for PostgREST."""
+    return datetime.now(timezone.utc).isoformat()
+
+# ── Watchlist ─────────────────────────────────────────────────────────────────
 
 def get_watchlist(priority: str = None, status: str = "monitoring") -> list:
     client = get_client()
@@ -35,14 +56,13 @@ def mark_available(username: str, platform: str) -> None:
     client = get_client()
     client.table("watchlist").update({
         "status": "available",
-        "last_checked": "now()"
+        "last_checked": _now()
     }).eq("username", username).eq("platform", platform).execute()
 
 def mark_checked(username: str, platform: str) -> None:
     client = get_client()
     client.table("watchlist").update({
-        "status": "monitoring",
-        "last_checked": "now()"
+        "last_checked": _now()
     }).eq("username", username).eq("platform", platform).execute()
 
 def mark_claimed(username: str, platform: str) -> None:
@@ -62,7 +82,6 @@ def add_to_claimed(username: str, platform: str, value_score: int,
         "account_used": account_used
     }).execute()
     mark_claimed(username, platform)
-
 
 # ── Account Pool ──────────────────────────────────────────────────────────────
 
@@ -105,7 +124,7 @@ def add_account(platform: str, username: str, password: str) -> bool:
             "username": username,
             "password": password,
             "status":   "available"
-        }, on_conflict="username").execute()
+        }, on_conflict="username,platform").execute()
         return True
     except Exception as e:
         print(f"  [db] Error adding account {username}: {e}")
@@ -115,12 +134,29 @@ def get_account_pool_status() -> list:
     client = get_client()
     return client.table("accounts").select("*").order("platform").execute().data
 
-def get_stats() -> dict:
+# ── Stats ─────────────────────────────────────────────────────────────────────
 
+def get_stats() -> dict:
     client = get_client()
-    total_monitored = len(client.table("watchlist").select("id").eq("status", "monitoring").execute().data)
-    total_available = len(client.table("watchlist").select("id").eq("status", "available").execute().data)
-    total_claimed   = len(client.table("claimed").select("id").execute().data)
+    # Use proper counting to avoid Supabase 1000-row pagination cap
+    try:
+        mon_result = client.table("watchlist").select("id", count="exact").eq("status", "monitoring").execute()
+        total_monitored = mon_result.count or 0
+    except Exception:
+        total_monitored = len(client.table("watchlist").select("id").eq("status", "monitoring").execute().data)
+
+    try:
+        avail_result = client.table("watchlist").select("id", count="exact").eq("status", "available").execute()
+        total_available = avail_result.count or 0
+    except Exception:
+        total_available = len(client.table("watchlist").select("id").eq("status", "available").execute().data)
+
+    try:
+        claim_result = client.table("claimed").select("id", count="exact").execute()
+        total_claimed = claim_result.count or 0
+    except Exception:
+        total_claimed = len(client.table("claimed").select("id").execute().data)
+
     top_names = (client.table("watchlist")
                  .select("username,value_score")
                  .eq("status", "monitoring")

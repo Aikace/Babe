@@ -2,8 +2,12 @@ name: 🧠 Generate Usernames (Daily)
 
 on:
   schedule:
-    - cron: "0 0 * * *"       # Every day at midnight UTC
+    - cron: "0 0 * * 1"       # Every week on Monday
   workflow_dispatch:           # Allow manual trigger
+
+concurrency:
+  group: generate
+  cancel-in-progress: false
 
 jobs:
   generate:

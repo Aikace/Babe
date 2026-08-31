@@ -27,7 +27,7 @@ async function loadData() {
       fetchTable("watchlist", "status=eq.monitoring&order=value_score.desc&limit=2000"),
       fetchTable("watchlist", "status=eq.available&order=value_score.desc"),
       fetchTable("claimed",   "order=claimed_at.desc&limit=200"),
-      fetchTable("accounts",  "order=platform.asc,status.asc"),
+      fetchTable("accounts_safe",  "order=platform.asc,status.asc"),
     ]);
 
     allWatchlist = watchlist;

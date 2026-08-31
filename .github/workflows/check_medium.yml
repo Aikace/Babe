@@ -2,8 +2,12 @@ name: 🔍 Check MEDIUM Priority (Every 15 min)
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: check-medium
+  cancel-in-progress: false
 
 jobs:
   check-medium:

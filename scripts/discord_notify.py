@@ -1,9 +1,10 @@
 import os
+import time
 import requests
 from datetime import datetime, timezone
 
-WEBHOOK_URL = os.environ["DISCORD_WEBHOOK"]
-USER_ID     = os.environ["DISCORD_USER_ID"]
+WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK", "")
+USER_ID     = os.environ.get("DISCORD_USER_ID", "")
 
 # Brand colors
 COLOR_GREEN  = 0x00FF88
@@ -16,9 +17,9 @@ PRIORITY_COLORS = {"HIGH": COLOR_RED, "MEDIUM": COLOR_ORANGE, "LOW": COLOR_BLUE}
 
 def _value_badge(score: int) -> str:
     if score >= 90: return "💎"
-    if score >= 75: return "🔥"
-    if score >= 60: return "⭐"
-    if score >= 40: return "📌"
+    if score >= 80: return "🔥"
+    if score >= 65: return "⭐"
+    if score >= 50: return "📌"
     return "🔹"
 
 def _platform_badge(platform: str) -> str:
@@ -28,12 +29,24 @@ def _platform_badge(platform: str) -> str:
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-def _post(payload: dict) -> None:
-    try:
-        resp = requests.post(WEBHOOK_URL, json=payload, timeout=10)
-        resp.raise_for_status()
-    except Exception as e:
-        print(f"[discord] Failed to send: {e}")
+def _post(payload: dict, max_retries: int = 3) -> None:
+    if not WEBHOOK_URL:
+        print("[discord] DISCORD_WEBHOOK not set, skipping notification")
+        return
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(WEBHOOK_URL, json=payload, timeout=10)
+            if resp.status_code == 429:
+                retry_after = resp.json().get("retry_after", 5)
+                print(f"[discord] Rate limited, retrying in {retry_after}s (attempt {attempt+1})")
+                time.sleep(retry_after)
+                continue
+            resp.raise_for_status()
+            return
+        except Exception as e:
+            print(f"[discord] Failed to send (attempt {attempt+1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
 
 # ─────────────────────────────────────────────
 # AVAILABLE ALERT
